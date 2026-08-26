@@ -1,0 +1,84 @@
+name: Bug report
+description: Report a reproducible problem with the Vita client, build, or tests
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve the project.
+
+        **Do not include private keys, pairing certificates, personal endpoints, console dumps, or unsanitized logs.** Use private vulnerability reporting for security issues.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected area
+      options:
+        - Vita runtime / streaming
+        - WireGuard tunnel
+        - Host tests
+        - VitaSDK build
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      placeholder: v0.1.8 or a65141d
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Vita model and firmware environment
+      placeholder: PCH-1001, base firmware and spoof if known
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the observed behavior and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Start the app
+        2. Select the paired host
+        3. Start a stream
+        4. Observe ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: network
+    attributes:
+      label: Sanitized network path
+      description: Describe LAN, relay, and gateway topology using documentation addresses only.
+      placeholder: Vita -> UDP relay -> WireGuard gateway -> Sunshine PC
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized evidence
+      description: Paste only the minimum relevant log lines after removing keys, certificates, public endpoints, and personal data.
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Safety checklist
+      options:
+        - label: I verified that this report contains no private key, certificate, personal endpoint, or unsanitized dump.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true

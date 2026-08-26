@@ -1,5 +1,15 @@
 # Changelog
 
+## [Unreleased]
+
+### Presentation
+
+- Added original project artwork and a redesigned GitHub landing page.
+- Added build, license, release, and CI badges plus an architecture diagram,
+  capability matrix, quick installation path, and clearer project scope.
+- Added structured issue forms and a pull request template with prominent
+  secret-handling guidance.
+
 ## [0.1.8] - 2026-08-25
 
 ### Added

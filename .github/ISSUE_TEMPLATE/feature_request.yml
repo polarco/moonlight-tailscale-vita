@@ -1,0 +1,54 @@
+name: Feature request
+description: Propose a focused improvement that fits the project's scope
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the user problem first. Keep in mind that the Tailscale control plane, DERP, and automatic node management are currently out of scope.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What limitation or workflow problem does this address?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Explain the smallest useful change and how it fits the current architecture.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Vita runtime / UI
+        - WireGuard / lwIP
+        - Gateway tooling
+        - Build and tests
+        - Documentation
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: This request does not require publishing private keys, certificates, or personal endpoints.
+          required: true
+        - label: I searched existing issues and discussions.
+          required: true
