@@ -1,0 +1,27 @@
+[Unit]
+Description=PS Vita WireGuard M2 restricted UDP/TCP echo
+Requires=wg-quick@wg-vita.service
+After=wg-quick@wg-vita.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -I -B /usr/local/libexec/tsvita-wg-echo.py
+DynamicUser=yes
+Restart=on-failure
+RestartSec=2s
+NoNewPrivileges=yes
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_INET
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target
