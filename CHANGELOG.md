@@ -2,6 +2,16 @@
 
 ## [Unreleased]
 
+### Documentation
+
+- Added a dated, evidence-based current-state section that distinguishes
+  validated LAN streaming from the still-pending remote smoke test.
+- Documented the last remote RTSP failure, the effective 30-second Sunshine
+  timeout, and the exact claim that remains unproven.
+- Added a gated roadmap for remote smoke, stability/rekey, recovery, candidate
+  0.1.9 engineering work, and explicit non-goals.
+- Added `ROADMAP.md` as the detailed source of truth for release decisions.
+
 ### Presentation
 
 - Added original project artwork and a redesigned GitHub landing page.

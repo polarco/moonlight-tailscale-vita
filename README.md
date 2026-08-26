@@ -12,6 +12,8 @@
 
 [Download VPK](https://github.com/polarco/moonlight-tailscale-vita/releases/latest) ·
 [Build from source](#build-from-source) ·
+[Current status](#current-state-2026-08-26) ·
+[Roadmap](#roadmap-to-019) ·
 [Report a bug](https://github.com/polarco/moonlight-tailscale-vita/issues/new?template=bug_report.yml) ·
 [Contribute](CONTRIBUTING.md)
 
@@ -24,6 +26,36 @@
 Moonlight Tailscale is an experimental PS Vita homebrew client that gives Vita
 Moonlight its own private network path. WireGuard and lwIP run entirely inside
 the application: no kernel plugin and no system-wide tunnel are required.
+
+## Current state (2026-08-26)
+
+> [!WARNING]
+> **LAN streaming is validated. Remote streaming over a high-latency UDP relay
+> is not validated yet.** Release 0.1.8 should not be presented as a proven
+> play-anywhere solution.
+
+| Area | Evidence available today | State |
+|---|---|:---:|
+| PCH-1001 on the same LAN as the gateway | Video, audio, controller, keyboard, pause/resume, and clean quit | ✅ Validated |
+| User-space WireGuard/lwIP data path | Noise IK, bidirectional TCP/UDP, keepalive, replay handling, and host tests | ✅ Validated |
+| External UDP relay to the gateway | Relay delivery, WireGuard handshake, bidirectional bytes, HTTP, and early RTSP exchanges | ✅ Validated |
+| Remote RTSP launch | Previous run reached Sunshine, then failed with error 104 near the former 10-second launch timeout | ⚠️ Blocked in last run |
+| Sunshine 30-second launch timeout | Sunshine has logged the effective value `ping_timeout = 30000` | ✅ Applied |
+| Remote first frame and two-minute stream | No Vita attempt has been completed since the timeout change | ⏳ Pending |
+| Remote stability across rekeys | Requires three cold starts and a five-minute session after the smoke test passes | ⏳ Pending |
+
+### What the last remote test proved
+
+The external path was not failing at WireGuard or basic reachability. It
+carried encrypted traffic in both directions and progressed through Moonlight's
+HTTP bootstrap and the first RTSP transactions. The fourth RTSP connection
+arrived about 9.34 seconds after the first SYN; Sunshine closed the pending
+launch session near its former 10-second limit, and the Vita reported error
+104.
+
+Sunshine now confirms a 30-second `ping_timeout`. That changes the hypothesis,
+not the result: a new physical Vita smoke test is still required before remote
+video, audio, or input can be claimed as working.
 
 ## At a glance
 
@@ -150,7 +182,7 @@ deploy/      Optional gateway service template
 tools/       Development-side echo responder
 ```
 
-## Project status
+## Capability matrix
 
 | Capability | Status |
 |---|:---:|
@@ -169,6 +201,58 @@ of round-trip latency may not finish Moonlight's sequential RTSP setup before
 the pending launch session expires. On a trusted personal host, setting
 `ping_timeout = 30000` can provide additional setup time. Treat this as an
 experimental compatibility adjustment, not a universal recommendation.
+
+The reference host has confirmed that value in its effective configuration,
+but the follow-up physical Vita test is still pending.
+
+## Roadmap to 0.1.9
+
+Development is evidence-driven: the next runtime change will address the first
+failure reproduced after the 30-second Sunshine timeout, rather than assuming
+the remaining problem is in the Vita client.
+
+### Gate 1 — remote smoke test
+
+- [x] Prove external UDP relay delivery to the WireGuard gateway.
+- [x] Prove WireGuard handshake and bidirectional traffic from the Vita.
+- [x] Reach Sunshine HTTP and RTSP services through the tunnel.
+- [x] Confirm Sunshine loaded `ping_timeout = 30000`.
+- [ ] Complete a cold start, display the first frame, and verify video, audio,
+  and one controller command.
+- [ ] Maintain the stream for two minutes, pause/resume once, and quit cleanly.
+
+### Gate 2 — stability and recovery
+
+- [ ] Pass three consecutive cold starts.
+- [ ] Stream for at least five minutes, crossing the 100- and 200-second
+  WireGuard rekeys without a visible interruption.
+- [ ] Exercise three pause/resume cycles.
+- [ ] Characterize behavior after a ten-second hotspot interruption.
+- [ ] Compare the same 960×544, 30 FPS, 3 Mb/s profile on LAN and remotely.
+
+### Candidate 0.1.9 engineering work
+
+- Session summary with TX/RX bytes, handshakes, rekeys, and rejection reasons.
+- Peer/configuration parser tests for valid, missing, truncated, and malformed
+  input.
+- Socket-shim harness for non-blocking connect, EOF, `poll`/`select`, `fcntl`,
+  and UDP timeout fallback behavior.
+- Loss, duplication, reordering, and burst tests around the 8,192-packet replay
+  window.
+- Longer host-side keepalive/rekey coverage and a separate reproducible VitaSDK
+  workflow.
+
+The complete gates, release rules, and decision tree are maintained in
+[ROADMAP.md](ROADMAP.md).
+
+### Explicitly out of scope for 0.1.9
+
+- Tailscale login, control-plane registration, DERP, MagicDNS, and tailnet ACL
+  management.
+- Automatic relay provisioning or router/firewall configuration.
+- Shipping private keys, peer files, endpoints, or Sunshine credentials.
+- Claiming general Internet compatibility before the physical gates above
+  pass.
 
 ## Contributing and security
 
