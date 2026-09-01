@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -eu
 
-project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-workspace_dir=$(CDPATH= cd -- "$project_dir/.." && pwd)
+project_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+workspace_dir=$(CDPATH='' cd -- "$project_dir/.." && pwd)
+runtime_version=$(sed -n '1p' "$project_dir/VERSION")
+vpk_name="Moonlight-Tailscale-Vita-v${runtime_version}.vpk"
 
 if [ -z "${VITASDK:-}" ]; then
   VITASDK="$workspace_dir/.tools/vitasdk"
@@ -73,11 +75,16 @@ cmake -S "$project_dir/moonlight" -B "$build_dir" \
 cmake --build "$build_dir" --target moonlight_tailscale_vpk --parallel 2
 cmake -E make_directory "$dist_dir"
 cmake -E copy_if_different \
-  "$build_dir/Moonlight-Tailscale-Vita-v0.1.8.vpk" \
-  "$dist_dir/Moonlight-Tailscale-Vita-v0.1.8.vpk"
+  "$build_dir/$vpk_name" \
+  "$dist_dir/$vpk_name"
 
-"$project_dir/tests/verify_moonlight_vpk.sh" \
-  "$dist_dir/Moonlight-Tailscale-Vita-v0.1.8.vpk" \
-  "$build_dir/upstream/moonlight.elf"
+if command -v unzip >/dev/null 2>&1; then
+  "$project_dir/tests/verify_moonlight_vpk.sh" \
+    "$dist_dir/$vpk_name" \
+    "$build_dir/upstream/moonlight.elf" \
+    "$build_dir/moonlight-tailscale-eboot.bin"
+else
+  echo "Verificacao VPK adiada: unzip indisponivel neste ambiente"
+fi
 
-echo "VPK criado em $dist_dir/Moonlight-Tailscale-Vita-v0.1.8.vpk"
+echo "VPK criado em $dist_dir/$vpk_name"

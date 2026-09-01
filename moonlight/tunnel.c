@@ -16,6 +16,8 @@
 
 #include "crypto.h"
 #include "ipv4_literal.h"
+#include "peer_config.h"
+#include "tunnel_runtime.h"
 #include "lwip/ip4.h"
 #include "lwip/netif.h"
 #include "lwip/netifapi.h"
@@ -31,10 +33,11 @@
 #define TSVITA_FALLBACK_LOG "ux0:data/moonlight/tsvita-network.log"
 #define TSVITA_INNER_MTU 1280U
 #define TSVITA_OUTER_TIMEOUT_US 100000
-#define TSVITA_HANDSHAKE_TIMEOUT_US 5000000ULL
-#define TSVITA_REKEY_INTERVAL_US 100000000ULL
-#define TSVITA_KEEPALIVE_INTERVAL_US 25000000ULL
 #define TSVITA_OUTER_RCVBUF 262144
+
+#ifndef TSVITA_VERSION
+#define TSVITA_VERSION "0.2.0-dev"
+#endif
 
 typedef enum TunnelState {
   TUNNEL_STOPPED = 0,
@@ -42,12 +45,6 @@ typedef enum TunnelState {
   TUNNEL_ONLINE,
   TUNNEL_FAILED
 } TunnelState;
-
-typedef struct PeerConfig {
-  uint8_t public_key[WIREGUARD_PUBLIC_KEY_LEN];
-  char endpoint_ip[48];
-  uint16_t endpoint_port;
-} PeerConfig;
 
 typedef struct TunnelContext {
   int outer_socket;
@@ -60,8 +57,7 @@ typedef struct TunnelContext {
   bool receive_thread_started;
   bool running;
   uint32_t pending_handshake_sender;
-  uint64_t last_handshake_us;
-  uint64_t last_transport_tx_us;
+  TsvitaScheduler scheduler;
   uint64_t tx_packets;
   uint64_t rx_packets;
   uint64_t decrypt_rejects;
@@ -76,6 +72,17 @@ static pthread_cond_t g_state_cond = PTHREAD_COND_INITIALIZER;
 static pthread_mutex_t g_peer_mutex = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t g_log_mutex = PTHREAD_MUTEX_INITIALIZER;
 static char g_last_error[160] = "nao iniciado";
+static TsvitaTelemetryStore g_telemetry;
+static pthread_once_t g_telemetry_once = PTHREAD_ONCE_INIT;
+
+static void initialize_telemetry(void) {
+  (void)tsvita_telemetry_store_init(&g_telemetry);
+}
+
+static void telemetry_add(TsvitaTelemetryCounter counter, uint64_t amount) {
+  pthread_once(&g_telemetry_once, initialize_telemetry);
+  tsvita_telemetry_add(&g_telemetry, counter, amount);
+}
 
 static void append_log_line(const char *path, const char *line,
                             unsigned int count) {
@@ -143,20 +150,6 @@ static void set_error(const char *format, ...) {
   tunnel_log("ERROR", "%s", g_last_error);
 }
 
-static char *trim(char *value) {
-  while (*value == ' ' || *value == '\t') {
-    ++value;
-  }
-  char *end = value + strlen(value);
-  while (end > value &&
-         (end[-1] == ' ' || end[-1] == '\t' || end[-1] == '\r' ||
-          end[-1] == '\n')) {
-    --end;
-  }
-  *end = '\0';
-  return value;
-}
-
 static int load_private_key(uint8_t key[WIREGUARD_PRIVATE_KEY_LEN]) {
   SceUID file = sceIoOpen(TSVITA_PRIVATE_KEY, SCE_O_RDONLY, 0);
   if (file < 0) {
@@ -174,63 +167,19 @@ static int load_private_key(uint8_t key[WIREGUARD_PRIVATE_KEY_LEN]) {
   return 0;
 }
 
-static int load_peer_config(PeerConfig *config) {
+static int load_peer_config(TsvitaPeerConfig *config) {
   memset(config, 0, sizeof(*config));
   SceUID file = sceIoOpen(TSVITA_CONFIG, SCE_O_RDONLY, 0);
   if (file < 0) {
     return file;
   }
-  char contents[512];
-  int length = sceIoRead(file, contents, sizeof(contents) - 1U);
+  char contents[TSVITA_PEER_CONFIG_MAX_SIZE + 1U];
+  int length = sceIoRead(file, contents, sizeof(contents));
   sceIoClose(file);
   if (length < 0) {
     return length;
   }
-  contents[length] = '\0';
-
-  char encoded_key[80] = {0};
-  char *line = strtok(contents, "\n");
-  while (line != NULL) {
-    char *entry = trim(line);
-    if (*entry != '\0' && *entry != '#') {
-      char *separator = strchr(entry, '=');
-      if (separator == NULL) {
-        return -3;
-      }
-      *separator = '\0';
-      char *name = trim(entry);
-      char *value = trim(separator + 1);
-      if (strcmp(name, "peer_public_key") == 0) {
-        snprintf(encoded_key, sizeof(encoded_key), "%s", value);
-      } else if (strcmp(name, "endpoint_ip") == 0) {
-        snprintf(config->endpoint_ip, sizeof(config->endpoint_ip), "%s",
-                 value);
-      } else if (strcmp(name, "endpoint_port") == 0) {
-        char *end = NULL;
-        long port = strtol(value, &end, 10);
-        if (end == value || *end != '\0' || port < 1 || port > 65535) {
-          return -4;
-        }
-        config->endpoint_port = (uint16_t)port;
-      }
-    }
-    line = strtok(NULL, "\n");
-  }
-
-  if (encoded_key[0] == '\0' || config->endpoint_ip[0] == '\0' ||
-      config->endpoint_port == 0U) {
-    return -5;
-  }
-  size_t key_size = sizeof(config->public_key);
-  if (!wireguard_base64_decode(encoded_key, config->public_key, &key_size) ||
-      key_size != sizeof(config->public_key)) {
-    return -6;
-  }
-  uint8_t endpoint[4];
-  if (!tsvita_parse_ipv4_literal(config->endpoint_ip, endpoint)) {
-    return -7;
-  }
-  return 0;
+  return tsvita_peer_config_parse(contents, (size_t)length, config);
 }
 
 static int send_transport_locked(const uint8_t *inner, size_t inner_size) {
@@ -263,8 +212,12 @@ static int send_transport_locked(const uint8_t *inner, size_t inner_size) {
   if (sent != (int)outgoing_size) {
     return sent < 0 ? sent : -21;
   }
-  g_tunnel.last_transport_tx_us = sceKernelGetProcessTimeWide();
+  uint64_t now = sceKernelGetProcessTimeWide();
+  tsvita_scheduler_note_tx(&g_tunnel.scheduler, now);
   ++g_tunnel.tx_packets;
+  telemetry_add(TSVITA_TELEMETRY_BYTES_TX, outgoing_size);
+  telemetry_add(TSVITA_TELEMETRY_PACKETS_TX, 1U);
+  if (inner_size == 0U) telemetry_add(TSVITA_TELEMETRY_KEEPALIVES, 1U);
   return 0;
 }
 
@@ -299,9 +252,15 @@ static err_t tunnel_netif_init(struct netif *netif) {
 }
 
 static int send_handshake_locked(void) {
+  bool rekey = g_tunnel.scheduler.handshake_accepted;
+  telemetry_add(rekey ? TSVITA_TELEMETRY_REKEY_ATTEMPTS
+                      : TSVITA_TELEMETRY_HANDSHAKE_ATTEMPTS,
+                1U);
   struct message_handshake_initiation initiation;
   if (!wireguard_create_handshake_initiation(&g_tunnel.device,
                                               g_tunnel.peer, &initiation)) {
+    tsvita_scheduler_note_handshake_failure(
+        &g_tunnel.scheduler, sceKernelGetProcessTimeWide());
     return -30;
   }
   int sent = sceNetSendto(g_tunnel.outer_socket, &initiation,
@@ -309,9 +268,13 @@ static int send_handshake_locked(void) {
                           (const SceNetSockaddr *)&g_tunnel.endpoint,
                           sizeof(g_tunnel.endpoint));
   if (sent != (int)sizeof(initiation)) {
+    tsvita_scheduler_note_handshake_failure(
+        &g_tunnel.scheduler, sceKernelGetProcessTimeWide());
     return sent < 0 ? sent : -31;
   }
   g_tunnel.pending_handshake_sender = initiation.sender;
+  tsvita_scheduler_note_handshake_requested(
+      &g_tunnel.scheduler, sceKernelGetProcessTimeWide());
   return 0;
 }
 
@@ -334,8 +297,13 @@ static int process_handshake_response_locked(const uint8_t *packet,
                                             response)) {
     return -33;
   }
+  bool rekey = g_tunnel.scheduler.handshake_accepted;
   wireguard_start_session(g_tunnel.peer, true);
-  g_tunnel.last_handshake_us = sceKernelGetProcessTimeWide();
+  tsvita_scheduler_note_handshake_accepted(
+      &g_tunnel.scheduler, sceKernelGetProcessTimeWide());
+  telemetry_add(rekey ? TSVITA_TELEMETRY_REKEY_SUCCESSES
+                      : TSVITA_TELEMETRY_HANDSHAKE_SUCCESSES,
+                1U);
   g_tunnel.pending_handshake_sender = 0U;
   tunnel_log("OK", "handshake WireGuard autenticado");
   return 0;
@@ -396,6 +364,8 @@ static int process_transport_locked(const uint8_t *incoming,
     return -46;
   }
   ++g_tunnel.rx_packets;
+  telemetry_add(TSVITA_TELEMETRY_BYTES_RX, incoming_size);
+  telemetry_add(TSVITA_TELEMETRY_PACKETS_RX, 1U);
   return 0;
 }
 
@@ -414,9 +384,13 @@ static void record_transport_rejection(int result) {
   if (result == -42) {
     counter = &g_tunnel.decrypt_rejects;
     reason = "autenticacao";
+    telemetry_add(TSVITA_TELEMETRY_AEAD_FAILURES, 1U);
   } else if (result == -47) {
     counter = &g_tunnel.replay_rejects;
     reason = "replay/janela";
+    telemetry_add(TSVITA_TELEMETRY_REPLAY_REJECTIONS, 1U);
+  } else {
+    telemetry_add(TSVITA_TELEMETRY_OTHER_REJECTIONS, 1U);
   }
   ++*counter;
   if (should_log_rejection(*counter)) {
@@ -453,8 +427,11 @@ static void *receive_thread_main(void *unused) {
 
     uint64_t now = sceKernelGetProcessTimeWide();
     pthread_mutex_lock(&g_peer_mutex);
-    if (g_tunnel.pending_handshake_sender == 0U &&
-        now - g_tunnel.last_handshake_us >= TSVITA_REKEY_INTERVAL_US) {
+    bool sending_valid = g_tunnel.peer != NULL &&
+                         g_tunnel.peer->curr_keypair.sending_valid;
+    unsigned int actions =
+        tsvita_scheduler_tick(&g_tunnel.scheduler, now, sending_valid);
+    if ((actions & TSVITA_SCHEDULER_ACTION_HANDSHAKE) != 0U) {
       int result = send_handshake_locked();
       if (result < 0) {
         tunnel_log("WARN", "rekey nao enviado: %d", result);
@@ -462,10 +439,7 @@ static void *receive_thread_main(void *unused) {
         tunnel_log("INFO", "rekey WireGuard solicitado");
       }
     }
-    if (g_tunnel.peer != NULL &&
-        g_tunnel.peer->curr_keypair.sending_valid &&
-        now - g_tunnel.last_transport_tx_us >=
-            TSVITA_KEEPALIVE_INTERVAL_US) {
+    if ((actions & TSVITA_SCHEDULER_ACTION_KEEPALIVE) != 0U) {
       int result = send_transport_locked(NULL, 0U);
       if (result < 0) {
         tunnel_log("WARN", "keepalive nao enviado: %d", result);
@@ -540,6 +514,8 @@ static int perform_initial_handshake(void) {
       }
     }
   }
+  tsvita_scheduler_note_handshake_failure(
+      &g_tunnel.scheduler, sceKernelGetProcessTimeWide());
   return -51;
 }
 
@@ -556,7 +532,8 @@ static int start_tunnel(void) {
   if (log >= 0) {
     sceIoClose(log);
   }
-  tunnel_log("INFO", "Moonlight Tailscale Adapter 0.1.8 iniciando");
+  tunnel_log("INFO", "Moonlight Tailscale Adapter %s iniciando",
+             TSVITA_VERSION);
   tunnel_log("INFO", "WireGuard replay-window=%u bits",
              WIREGUARD_REPLAY_BITS_TOTAL);
 
@@ -575,7 +552,7 @@ static int start_tunnel(void) {
     set_error("wg-private.key ausente/invalida: %d", result);
     return result;
   }
-  PeerConfig config;
+  TsvitaPeerConfig config;
   result = load_peer_config(&config);
   if (result < 0) {
     crypto_zero(private_key, sizeof(private_key));
@@ -585,6 +562,8 @@ static int start_tunnel(void) {
 
   memset(&g_tunnel, 0, sizeof(g_tunnel));
   g_tunnel.outer_socket = -1;
+  tsvita_scheduler_init(&g_tunnel.scheduler,
+                        sceKernelGetProcessTimeWide());
   wireguard_init();
   if (!wireguard_device_init(&g_tunnel.device, private_key)) {
     crypto_zero(private_key, sizeof(private_key));
@@ -701,4 +680,24 @@ bool tsvita_tunnel_is_online(void) {
 
 const char *tsvita_tunnel_last_error(void) {
   return g_last_error;
+}
+
+void tsvita_session_begin(void) {
+  pthread_once(&g_telemetry_once, initialize_telemetry);
+  tsvita_telemetry_session_begin(&g_telemetry,
+                                 sceKernelGetProcessTimeWide());
+  tunnel_log("SESSION", "inicio");
+}
+
+void tsvita_session_end(void) {
+  pthread_once(&g_telemetry_once, initialize_telemetry);
+  TsvitaTelemetry snapshot;
+  tsvita_telemetry_snapshot(&g_telemetry, &snapshot);
+  if (!snapshot.session_active) return;
+  tsvita_telemetry_session_end(&g_telemetry,
+                               sceKernelGetProcessTimeWide());
+  tsvita_telemetry_snapshot(&g_telemetry, &snapshot);
+  char summary[TSVITA_SESSION_SUMMARY_MAX + 1U];
+  tsvita_telemetry_format_summary(&snapshot, summary, sizeof(summary));
+  tunnel_log("SESSION", "%s", summary);
 }

@@ -1,8 +1,8 @@
 # Moonlight Tailscale roadmap
 
-Last updated: 2026-08-26  
-Current release: 0.1.8  
-Next release: evidence-driven; no date committed
+Last updated: 2026-09-01
+Current release: 0.1.8
+Local candidate: 0.2.0-dev; no release date committed
 
 ## Release truth
 
@@ -64,9 +64,9 @@ Pass criteria:
 - no Vita crash, hang, or premature teardown;
 - handshake and byte counters continue increasing in both directions.
 
-## Gate 3: recovery characterization
+## Gate 3: recovery
 
-This gate measures behavior; it does not block basic remote functionality.
+This gate blocks promotion of the local candidate to 0.2.0.
 
 1. Interrupt the Vita hotspot for ten seconds during a stream.
 2. Restore the same network.
@@ -100,9 +100,9 @@ the Vita runtime.
 | Authentication/replay rejection grows | Reproduce with loss/reordering tests and fix the data path |
 | Vita crashes | Collect sanitized application logs first; do not publish memory dumps |
 
-## Candidate 0.1.9 scope
+## 0.2.0-dev host scope
 
-The candidate backlog, subject to physical evidence, is:
+Completed in the host-tested candidate:
 
 1. Session telemetry: TX/RX totals, handshakes, rekeys, authentication failures,
    replay rejection, and a bounded end-of-session summary.
@@ -113,15 +113,33 @@ The candidate backlog, subject to physical evidence, is:
 4. Replay-window tests for loss, duplicates, reordering, bursts, boundary
    values, and traffic outside the 8,192-packet window.
 5. Longer host-side keepalive and rekey tests.
-6. A separate VitaSDK workflow when a reproducible runner/toolchain is
-   available.
+6. A separate workflow using the immutable
+   `vitasdk/vitasdk:2026.08-20260815` image, ShellCheck 0.11.0 and actionlint
+   1.7.7.
+7. VPK verification that requires VPK, ELF and `eboot.bin` from the same build,
+   compares the packaged executable byte for byte, and rejects malicious
+   archive fixtures.
 
-No 0.1.9 runtime change is considered approved without a physical Vita smoke
-test and a regression test that matches the observed failure.
+The local VPK is a **candidate not physically validated**. It must not replace
+the public 0.1.8 release or be described as approved.
+
+## Promotion gate: 0.2.0
+
+Promotion requires all of the following on the physical Vita:
+
+1. Install the candidate and read back `eboot.bin` and `param.sfo`.
+2. Reach the first frame over the remote path.
+3. Verify video, audio, and controller input.
+4. Maintain the stream for two minutes.
+5. Pass three consecutive cold starts.
+6. Stream for five minutes, crossing rekeys near 100 and 200 seconds.
+7. Recover after a ten-second hotspot interruption.
+
+No 0.2.0 runtime change is considered approved before those gates pass.
 
 ## Non-goals
 
-Version 0.1.9 will not attempt to provide:
+Version 0.2.0 will not attempt to provide:
 
 - Tailscale control-plane login or device registration;
 - DERP, MagicDNS, tailnet ACL management, or automatic key rotation;

@@ -2,6 +2,31 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a strict, length-aware peer parser with stable error codes.
+- Added deterministic keepalive/rekey scheduling and bounded per-session
+  telemetry without endpoints, keys, certificates, or payloads.
+- Added production `socket_shim.c` host coverage with fake lwIP/Vita time.
+- Added malicious VPK fixtures, frozen VitaSDK container builds, sanitizers,
+  ShellCheck 0.11.0, actionlint 1.7.7, and a sanitized infrastructure
+  healthcheck.
+
+### Fixed
+
+- Corrected the replay history to exactly 8,192 positions using a 257-word
+  modulo ring: age 8,191 is accepted and age 8,192 is rejected.
+- Centralized runtime versioning at `0.2.0-dev` and removed the 0.1.8 build-name,
+  SFO, and runtime-log constants.
+- Added the narrow OpenSSL 1.0 compatibility surface required by the frozen
+  VitaSDK image's cURL archive.
+
+### Release status
+
+- Kept public release 0.1.8 unchanged.
+- Classified the locally built 0.2.0-dev VPK as a candidate not physically
+  validated.
+
 ### Documentation
 
 - Added a dated, evidence-based current-state section that distinguishes
@@ -9,7 +34,7 @@
 - Documented the last remote RTSP failure, the effective 30-second Sunshine
   timeout, and the exact claim that remains unproven.
 - Added a gated roadmap for remote smoke, stability/rekey, recovery, candidate
-  0.1.9 engineering work, and explicit non-goals.
+  0.2.0 engineering work, and explicit non-goals.
 - Added `ROADMAP.md` as the detailed source of truth for release decisions.
 
 ### Presentation

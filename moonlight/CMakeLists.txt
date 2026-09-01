@@ -13,6 +13,11 @@ project(tsvita_moonlight_adapter C)
 include("$ENV{VITASDK}/share/vita.cmake" REQUIRED)
 
 get_filename_component(TSVITA_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/.." ABSOLUTE)
+file(STRINGS "${TSVITA_ROOT}/VERSION" TSVITA_RUNTIME_VERSION LIMIT_COUNT 1)
+if(NOT TSVITA_RUNTIME_VERSION MATCHES "^[0-9]+\\.[0-9]+\\.[0-9]+(-dev)?$")
+  message(FATAL_ERROR "VERSION invalida: ${TSVITA_RUNTIME_VERSION}")
+endif()
+set(TSVITA_SFO_VERSION "00.20")
 set(MOONLIGHT_UPSTREAM "${TSVITA_ROOT}/.deps/vita-moonlight")
 set(WIREGUARD_LWIP_DIR "${TSVITA_ROOT}/.deps/wireguard-lwip")
 set(LWIP_DIR "${TSVITA_ROOT}/.deps/lwip")
@@ -34,8 +39,12 @@ include("${LWIP_DIR}/src/Filelists.cmake")
 
 target_sources(moonlight.elf PRIVATE
   "${CMAKE_CURRENT_SOURCE_DIR}/tunnel.c"
+  "${CMAKE_CURRENT_SOURCE_DIR}/tunnel_runtime.c"
+  "${CMAKE_CURRENT_SOURCE_DIR}/peer_config.c"
+  "${CMAKE_CURRENT_SOURCE_DIR}/openssl_compat.c"
   "${CMAKE_CURRENT_SOURCE_DIR}/socket_shim.c"
   "${TSVITA_ROOT}/src/ipv4_literal.c"
+  "${TSVITA_ROOT}/src/replay_window.c"
   "${TSVITA_ROOT}/src/wireguard_platform_vita.c"
   "${WIREGUARD_LWIP_DIR}/src/wireguard.c"
   "${WIREGUARD_LWIP_DIR}/src/crypto.c"
@@ -61,6 +70,7 @@ target_include_directories(moonlight.elf PRIVATE
 
 target_compile_definitions(moonlight.elf PRIVATE
   TSVITA_LWIP_SYS_NOW_PROVIDED=1
+  TSVITA_VERSION="${TSVITA_RUNTIME_VERSION}"
 )
 
 target_link_libraries(moonlight.elf
@@ -87,7 +97,7 @@ set(TSVITA_MOONLIGHT_EBOOT
 set(TSVITA_MOONLIGHT_SFO
     "${CMAKE_CURRENT_BINARY_DIR}/moonlight-tailscale-param.sfo")
 set(TSVITA_MOONLIGHT_VPK
-    "${CMAKE_CURRENT_BINARY_DIR}/Moonlight-Tailscale-Vita-v0.1.8.vpk")
+    "${CMAKE_CURRENT_BINARY_DIR}/Moonlight-Tailscale-Vita-v${TSVITA_RUNTIME_VERSION}.vpk")
 
 add_custom_command(
   OUTPUT "${TSVITA_MOONLIGHT_VELF}"
@@ -107,7 +117,7 @@ add_custom_command(
 
 add_custom_command(
   OUTPUT "${TSVITA_MOONLIGHT_SFO}"
-  COMMAND vita-mksfoex -s TITLE_ID=TSVITAML1 -s APP_VER=00.18
+  COMMAND vita-mksfoex -s TITLE_ID=TSVITAML1 -s APP_VER=${TSVITA_SFO_VERSION}
           "Moonlight Tailscale" "${TSVITA_MOONLIGHT_SFO}"
   VERBATIM
 )

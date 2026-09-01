@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -eu
 
-project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-workspace_dir=$(CDPATH= cd -- "$project_dir/.." && pwd)
+project_dir=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+workspace_dir=$(CDPATH='' cd -- "$project_dir/.." && pwd)
 
 if [ -z "${VITASDK:-}" ]; then
   VITASDK="$workspace_dir/.tools/vitasdk"

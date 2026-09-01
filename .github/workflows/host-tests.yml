@@ -1,4 +1,4 @@
-name: Host tests
+name: Host and VitaSDK tests
 
 on:
   push:
@@ -8,10 +8,48 @@ permissions:
   contents: read
 
 jobs:
-  test:
+  host:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - name: Run host self-tests
         run: ./scripts/test-host.sh
+      - name: Run ASan and UBSan
+        env:
+          SANITIZE: "1"
+        run: ./scripts/test-host.sh
+      - name: Verify diff and secrets
+        run: |
+          git diff --check
+          ./scripts/scan-secrets.sh
+
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: ShellCheck 0.11.0
+        run: |
+          curl -fsSLo /tmp/shellcheck.tar.xz \
+            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.xz
+          tar -xJf /tmp/shellcheck.tar.xz -C /tmp
+          /tmp/shellcheck-v0.11.0/shellcheck --version
+          find scripts tests infra -type f -name '*.sh' -print0 | \
+            xargs -0 /tmp/shellcheck-v0.11.0/shellcheck
+      - name: actionlint 1.7.7
+        run: |
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7 -version
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+  vitasdk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Build with frozen VitaSDK image
+        run: ./scripts/build-vitasdk-container.sh
+      - name: Verify candidate metadata
+        run: |
+          test -f dist/Moonlight-Tailscale-Vita-v0.2.0-dev.vpk
+          sha256sum dist/Moonlight-Tailscale-Vita-v0.2.0-dev.vpk

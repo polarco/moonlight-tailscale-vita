@@ -101,3 +101,31 @@ index 4e30f0d..389e9c9 100644
 +                  gs_error != NULL ? gs_error : "sem detalhe");
      return;
    }
+diff --git a/src/connection.c b/src/connection.c
+index 2906dfb..eb65a4a 100644
+--- a/src/connection.c
++++ b/src/connection.c
+@@ -26,6 +26,7 @@
+ #include <stdbool.h>
+ #include "connection_overlay.h"
+ #include "debug.h"
++#include "tunnel.h"
+ 
+ static int connection_status = LI_DISCONNECTED;
+ 
+@@ -65,6 +66,7 @@ void connection_connection_started() {
+   vita_debug_log("connection started\n");
+   connection_status = LI_CONNECTED;
+   start_output();
++  tsvita_session_begin();
+   vitavideo_hide_poor_net_indicator();
+ }
+ 
+@@ -97,6 +99,7 @@ static void connection_connection_terminated(int error_code) {
+   }
+ 
+   LiStopConnection();
++  tsvita_session_end();
+ 
+   if (connection_status == LI_CONNECTED) {
+     stop_output();
