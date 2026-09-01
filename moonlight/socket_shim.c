@@ -3,8 +3,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
+#ifndef TSVITA_HOST_TEST
 #include <psp2/kernel/processmgr.h>
 #include <psp2/kernel/threadmgr.h>
+#endif
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -17,8 +19,12 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#ifdef TSVITA_HOST_TEST
+#include "socket_shim_host_compat.h"
+#else
 #include "lwip/netdb.h"
 #include "lwip/sockets.h"
+#endif
 
 #define TSVITA_LWIP_FD_FIRST 128
 #define TSVITA_LWIP_FD_LAST 191

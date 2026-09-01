@@ -12,8 +12,8 @@
 
 [Download VPK](https://github.com/polarco/moonlight-tailscale-vita/releases/latest) ·
 [Build from source](#build-from-source) ·
-[Current status](#current-state-2026-08-26) ·
-[Roadmap](#roadmap-to-019) ·
+[Current status](#current-state-2026-09-01) ·
+[Roadmap](#roadmap-to-020) ·
 [Report a bug](https://github.com/polarco/moonlight-tailscale-vita/issues/new?template=bug_report.yml) ·
 [Contribute](CONTRIBUTING.md)
 
@@ -23,11 +23,15 @@
 > Release **0.1.8** has been tested on a PCH-1001 with video, audio, controls,
 > and keyboard input crossing the WireGuard gateway.
 
+> [!CAUTION]
+> The source tree is now **0.2.0-dev**. Its locally built VPK is a host-tested
+> candidate, not a public release and not physically approved on a Vita.
+
 Moonlight Tailscale is an experimental PS Vita homebrew client that gives Vita
 Moonlight its own private network path. WireGuard and lwIP run entirely inside
 the application: no kernel plugin and no system-wide tunnel are required.
 
-## Current state (2026-08-26)
+## Current state (2026-09-01)
 
 > [!WARNING]
 > **LAN streaming is validated. Remote streaming over a high-latency UDP relay
@@ -43,6 +47,8 @@ the application: no kernel plugin and no system-wide tunnel are required.
 | Sunshine 30-second launch timeout | Sunshine has logged the effective value `ping_timeout = 30000` | ✅ Applied |
 | Remote first frame and two-minute stream | No Vita attempt has been completed since the timeout change | ⏳ Pending |
 | Remote stability across rekeys | Requires three cold starts and a five-minute session after the smoke test passes | ⏳ Pending |
+| 0.2.0-dev host hardening | Replay boundaries, parser, socket shim, scheduler, telemetry, sanitizers, VPK fixtures, and frozen VitaSDK build | ✅ Host validated |
+| 0.2.0-dev physical validation | Installation/readback, remote first frame, two minutes, cold starts, rekeys, and hotspot recovery | ⏳ Pending |
 
 ### What the last remote test proved
 
@@ -105,6 +111,9 @@ your setup.
 - An 8,192-packet replay window for traffic reordered under streaming load.
 - Pinned Vita Moonlight, wireguard-lwip, and lwIP revisions.
 - Host-side Noise IK, encrypted packet, keepalive, and lwIP self-tests.
+- Exact 8,192-position antireplay tests and strict peer parsing.
+- Session telemetry plus deterministic keepalive/rekey scheduling.
+- A host harness that compiles the production socket shim with fake time.
 - A reproducible VitaSDK build and VPK safety verification.
 
 ## Install the current release
@@ -149,6 +158,17 @@ or relay endpoint; do not paste real keys or endpoints into public issues.
 - Git, CMake, a C11 compiler, and standard Unix build tools;
 - [VitaSDK](https://vitasdk.org/) with `VITASDK` exported;
 - Vita Moonlight build dependencies, including `libvita2d` and zstd.
+
+The reproducible path uses the dated, immutable VitaSDK image documented by
+the VitaSDK project:
+
+```sh
+./scripts/build-vitasdk-container.sh
+```
+
+This pins `vitasdk/vitasdk:2026.08-20260815` and creates
+`dist/Moonlight-Tailscale-Vita-v0.2.0-dev.vpk`. The artifact remains a
+non-physically-validated candidate until every gate below passes.
 
 ```sh
 git clone https://github.com/polarco/moonlight-tailscale-vita.git
@@ -205,7 +225,7 @@ experimental compatibility adjustment, not a universal recommendation.
 The reference host has confirmed that value in its effective configuration,
 but the follow-up physical Vita test is still pending.
 
-## Roadmap to 0.1.9
+## Roadmap to 0.2.0
 
 Development is evidence-driven: the next runtime change will address the first
 failure reproduced after the 30-second Sunshine timeout, rather than assuming
@@ -230,22 +250,22 @@ the remaining problem is in the Vita client.
 - [ ] Characterize behavior after a ten-second hotspot interruption.
 - [ ] Compare the same 960×544, 30 FPS, 3 Mb/s profile on LAN and remotely.
 
-### Candidate 0.1.9 engineering work
+### 0.2.0-dev engineering work
 
-- Session summary with TX/RX bytes, handshakes, rekeys, and rejection reasons.
-- Peer/configuration parser tests for valid, missing, truncated, and malformed
+- [x] Session summary with TX/RX bytes, handshakes, rekeys, and rejection reasons.
+- [x] Peer/configuration parser tests for valid, missing, truncated, and malformed
   input.
-- Socket-shim harness for non-blocking connect, EOF, `poll`/`select`, `fcntl`,
+- [x] Socket-shim harness for non-blocking connect, EOF, `poll`/`select`, `fcntl`,
   and UDP timeout fallback behavior.
-- Loss, duplication, reordering, and burst tests around the 8,192-packet replay
+- [x] Loss, duplication, reordering, and burst tests around the 8,192-packet replay
   window.
-- Longer host-side keepalive/rekey coverage and a separate reproducible VitaSDK
+- [x] Longer host-side keepalive/rekey coverage and a separate reproducible VitaSDK
   workflow.
 
 The complete gates, release rules, and decision tree are maintained in
 [ROADMAP.md](ROADMAP.md).
 
-### Explicitly out of scope for 0.1.9
+### Explicitly out of scope for 0.2.0
 
 - Tailscale login, control-plane registration, DERP, MagicDNS, and tailnet ACL
   management.
